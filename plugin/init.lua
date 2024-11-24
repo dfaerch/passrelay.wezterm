@@ -27,6 +27,7 @@ local function displaySelector(window, user_accounts, callback)
     )
 end
 
+-- Determine if cmd is a command or a function call, then execute
 local function run_command(cmd)
     local success, output, stderr
     if type(cmd) == "function" then
@@ -44,16 +45,16 @@ end
 function M.get_password(window, pane, module_settings)
     local user_accounts = {}
 
-    -- Check if `GET_USER_LIST_CMD` is provided
-    if module_settings.GET_USER_LIST_CMD then
-        -- Fetch the user list via `GET_USER_LIST_CMD`
-        local success, user_list, stderr = run_command(module_settings.GET_USER_LIST_CMD)
+    -- Check if `get_userlist` is provided
+    if module_settings.get_userlist then
+        -- Fetch the user list via `get_userlist`
+        local success, user_list, stderr = run_command(module_settings.get_userlist)
 
         -- Log and handle potential errors
         if not success or type(user_list) ~= "string" or user_list == "" then
             wezterm.log_info("User list command failed with output: " .. tostring(user_list))
             wezterm.log_info("User list command stderr: " .. tostring(stderr))
-            window:toast_notification("Password Retrieval", "Failed to get user list", nil, 3000)
+            window:toast_notification("Password Retrieval", "Failed to get user list: ".. stderr, nil, 3000)
             return
         end
 
@@ -65,24 +66,24 @@ function M.get_password(window, pane, module_settings)
 
     -- If no user accounts found, assume no selection and proceed to password fetch
     if #user_accounts == 0 then
-        local get_pass_cmd = module_settings.GET_PASS_CMD
+        local get_password = module_settings.get_password
 
-        -- Run `GET_PASS_CMD` without account substitution
-        local success, password, stderr = run_command(get_pass_cmd)
+        -- Run `get_password` without account substitution
+        local success, password, stderr = run_command(get_password)
         if success and type(password) == "string" and password ~= "" then
             window:perform_action(wezterm.action.SendString(password), pane)
         else
-            window:toast_notification("Password Retrieval", "Failed to get password", nil, 3000)
+            window:toast_notification("Password Retrieval", "Failed to get password " .. stderr, nil, 3000)
         end
         return
     end
 
     -- Otherwise, use displaySelector to prompt user for account selection
     displaySelector(window, user_accounts, function(selected_account)
-        -- Replace `%user` in `GET_PASS_CMD` with selected account
-        local get_pass_cmd = module_settings.GET_PASS_CMD:gsub("%%user", selected_account)
+        -- Replace `%user` in `get_password` with selected account
+        local get_password = module_settings.get_password:gsub("%%user", selected_account)
 
-        local success, password, stderr = run_command(get_pass_cmd)
+        local success, password, stderr = run_command(get_password)
         if success and type(password) == "string" and password ~= "" then
             window:perform_action(wezterm.action.SendString(password), pane)
         else
@@ -92,24 +93,24 @@ function M.get_password(window, pane, module_settings)
 end
 
 function M.apply_to_config(config, module_settings)
-    if not module_settings or not module_settings.GET_PASS_CMD then
-        wezterm.log_error("module_settings are missing required setting GET_PASS_CMD")
-        wezterm.toast_notification("Configuration Error", "module_settings are missing required GET_PASS_CMD", nil, 5000)
+    if not module_settings or not module_settings.get_password then
+        wezterm.log_error("module_settings are missing required setting get_password")
+        wezterm.toast_notification("Configuration Error", "module_settings are missing required get_password", nil, 5000)
         return
     end
 
     config.keys = config.keys or {}
 
-    if not module_settings or not module_settings.HOTKEY or not module_settings.HOTKEY.key or not module_settings.HOTKEY.mods then
-        module_settings.HOTKEY = {
+    if not module_settings or not module_settings.hotkey or not module_settings.hotkey.key or not module_settings.hotkey.mods then
+        module_settings.hotkey = {
             mods = 'CTRL',
             key  = 'p'
         }
     end
 
     table.insert(config.keys, {
-        mods = module_settings.HOTKEY.mods ,
-        key = module_settings.HOTKEY.key,
+        mods = module_settings.hotkey.mods ,
+        key = module_settings.hotkey.key,
         action = wezterm.action_callback(function(window, pane)
             M.get_password(window, pane, module_settings)
         end),

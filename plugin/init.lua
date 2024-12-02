@@ -33,8 +33,6 @@ local function run_command(cmd, ...)
     local success, output, stderr
     local args = { ... }
 
-    wezterm.log_info("Type of cmd: " .. type(cmd))
-
     if type(cmd) == "function" then
         -- Pass all additional arguments to the function
         success, output = pcall(cmd, table.unpack(args))

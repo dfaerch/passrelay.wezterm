@@ -1,7 +1,7 @@
 local wezterm = require("wezterm")
 
 ---@class password_fetch_module
-local M = {}
+local M = { version = 1 }
 
 --- function to display an input selector for user list
 -- @param window Window The wezterm window object
@@ -28,12 +28,20 @@ local function displaySelector(window, user_accounts, callback)
 end
 
 -- Determine if cmd is a command or a function call, then execute
-local function run_command(cmd)
+local function run_command(cmd, ...)
     local success, output, stderr
+    local args = { ... }
     if type(cmd) == "function" then
-        success, output = pcall(cmd)
+        -- Pass all additional arguments to the function
+        success, output = pcall(cmd, table.unpack(args))
     else
-        success, output, stderr = wezterm.run_child_process({"sh", "-c", cmd})
+        -- If arguments are provided, substitute `%user` in the command string
+        if #args > 0 and type(args[1]) == "string" then
+            local selected_account = args[1]
+            cmd = cmd:gsub("%%user", selected_account)
+        end
+        -- Execute the command string
+        success, output, stderr = wezterm.run_child_process({ "sh", "-c", cmd })
     end
     return success, output, stderr
 end
@@ -52,9 +60,9 @@ function M.get_password(window, pane, module_settings)
 
         -- Log and handle potential errors
         if not success or type(user_list) ~= "string" or user_list == "" then
-            wezterm.log_info("User list command failed with output: " .. tostring(user_list))
-            wezterm.log_info("User list command stderr: " .. tostring(stderr))
-            window:toast_notification("Password Retrieval", "Failed to get user list: ".. stderr, nil, 3000)
+            wezterm.log_error("User list command failed with output: " .. tostring(user_list))
+            wezterm.log_error("User list command stderr: " .. tostring(stderr))
+            window:toast_notification("PassRelay Error", "Failed to get user list.\n\n".. tostring(stderr), nil, module_settings.toast_time)
             return
         end
 
@@ -64,30 +72,29 @@ function M.get_password(window, pane, module_settings)
         end
     end
 
-    -- If no user accounts found, assume no selection and proceed to password fetch
+    -- If no user accounts found, proceed to password fetch without selection
     if #user_accounts == 0 then
-        local get_password = module_settings.get_password
-
         -- Run `get_password` without account substitution
-        local success, password, stderr = run_command(get_password)
+        local success, password, stderr = run_command(module_settings.get_password)
         if success and type(password) == "string" and password ~= "" then
             window:perform_action(wezterm.action.SendString(password), pane)
         else
-            window:toast_notification("Password Retrieval", "Failed to get password " .. stderr, nil, 3000)
+            wezterm.log_error("password command stderr: " .. tostring(stderr))
+            window:toast_notification("PassRelay Error", "Failed to get password.\n\n" .. tostring(stderr), nil, module_settings.toast_time)
         end
         return
     end
 
-    -- Otherwise, use displaySelector to prompt user for account selection
+    -- Otherwise, prompt user for account selection
     displaySelector(window, user_accounts, function(selected_account)
-        -- Replace `%user` in `get_password` with selected account
-        local get_password = module_settings.get_password:gsub("%%user", selected_account)
+        -- Run `get_password` with the selected account
+        local success, password, stderr = run_command(module_settings.get_password, selected_account)
 
-        local success, password, stderr = run_command(get_password)
         if success and type(password) == "string" and password ~= "" then
             window:perform_action(wezterm.action.SendString(password), pane)
         else
-            window:toast_notification("Password Retrieval", "Failed to get password", nil, 3000)
+            wezterm.log_error("password command stderr: " .. tostring(stderr))
+            window:toast_notification("PassRelay Error", "Failed to get password.\n\n" .. tostring(stderr), nil, module_settings.toast_time)
         end
     end)
 end
@@ -100,6 +107,10 @@ function M.apply_to_config(config, module_settings)
     end
 
     config.keys = config.keys or {}
+
+    if not module_settings or not module_settings.toast_time then
+        module_settings.toast_time = 3000
+    end 
 
     if not module_settings or not module_settings.hotkey or not module_settings.hotkey.key or not module_settings.hotkey.mods then
         module_settings.hotkey = {

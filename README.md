@@ -39,125 +39,80 @@ local passrelay_settings = {
 }
 ```
 
-Check out the `Examples` below for more complete examples.
+***Note:***: For more details, please see the [Documentation](docs/README.md#Configuration)
 
-***Note:***: All options are optional except for `get_password`.
+## Usage
 
-### **get_userlist**
+Heres i will describe setting up for KeePassXC. To make your own integration with some other manager, please see the [Documentation](docs/README.md#Configuration)
 
-A command (string) or function to fetch the list of user accounts. If not provided, no user selection will occur.
+### KeePassXC
 
-- **If given a string**, this string will be executed by `sh -c`. For example, `get_userlist = "/bin/echo bob"` will return a user list with one user named "bob". The format is "one username per line" — thus `get_userlist = '/bin/echo -e "bob\nalice"'` will return two users.
+This integration allows you to retrieve passwords from a running GUI instance of KeePassXC when the database is unlocked (i.e., when you have entered your master password in KeePassXC).
 
-- **If given a function**, the function will be called, and a list of users is expected to be returned. Example:
+#### 1. KeePassXC-Proxy-CLI Setup
 
-```lua
-get_userlist = function()
-    return {"alice", "bob"}
-end
+Assuming you have already installed KeePassXC, proceed to install and set up [keepassxc-proxy-cli](https://github.com/dfaerch/keepassxc-proxy-cli).
+
+Open KeePassXC, unlock your database, and add a new entry. You need to add Name, Password and a URL. Since KeePassXC only allows us to search by URLs and not usernames, we will add the username as the URL. In this case, we prefix the URL with `wezterm://` instead of `https://`. Let's add a user named "alice":
+
+``` 
+Name: WezTerm Test User Alice
+Password: s00pers3cret
+URL: wezterm://alice
 ```
 
-### **get_password** *(mandatory)*
+You don't need to fill out the other fields. Save the entry, and let's test that `keepassxc-proxy-cli` can actually read it.
 
-A command (string) or function to fetch the password.
-
-- **If given a string**, this string will be executed by `sh -c`. For example, `get_password = "/bin/echo password123"` will execute "/bin/echo" and return the password "password123" to the console. If used with `get_userlist`, you can add `%user` to the command to pass in the selected username, e.g., `get_password = "grep %user /path/to/userlist"`. Note that no sanitization is done by PassRelay on the username before inserting.
-
-- **If given a function**, the function will be called (with the username as an argument if `get_userlist` is defined), and must return the password as a string. Example:
-
-```lua
-get_password = function(user)
-    return "password123"
-end
+```bash
+$ ~/path/to/keepassxc-proxy-cli.py -k ~/.keepassxc-proxy-cli.key -u 'wezterm://alice'
 ```
 
-***Note:*** Remember that if you do not return a newline, you will have to hit enter yourself on the password prompt. This may be desirable in some cases, but in most cases, you probably want to return a newline as well.
+*(If you get a "module not found" error, make sure you've followed the setup guide of [keepassxc-proxy-cli](https://github.com/dfaerch/keepassxc-proxy-cli).)*
 
-### **hotkey**
+Since this is your first request for this user, KeePassXC will display a dialog asking you to confirm that the application is allowed to access the password. Once you've confirmed, you should get output like this:
 
-A table defining the keybinding for triggering password retrieval:
+``` 
+Name: WezTerm Test User Alice
+Login:
+Password: s00pers3cret
+```
 
-- `mods`: Modifier keys (e.g., `"CTRL"`, `"ALT"`).
-- `key`: The key to press (e.g., `"p"`).
+#### 2. WezTerm Configuration
 
-Default is `CTRL+p`.
+Edit your WezTerm configuration file (`~/.wezterm.lua`).
 
-### **toast_time**
-
-Duration (in milliseconds) for toast notifications. Toasts display error information.
-
-Default is 3000 ms.
-
-## Developer Examples
-
-If you are looking to integrate with a password manager yourself, this section is for you.
-
-### Basic Examples
-
-The next two examples are basic demonstrations of how to use the module.
-
-***Note:*** These examples use hardcoded passwords only to simplify the example. It is not recommended to do this in practice.
-
-#### Basic Example 1
+First, ensure you already have this in your config:
 
 ```lua
 local wezterm = require 'wezterm'
 local config = wezterm.config_builder()
-
-local passrelay_settings = {
-  get_userlist = '/bin/echo -e "bob\nalice"',
-  get_password = "echo %user:testpass",
-
-  hotkey = {
-      mods = 'CTRL',
-      key  = 'p',
-  },
-
-  toast_time = 3000,
-}
-
-wezterm.plugin.require("https://github.com/dfaerch/passrelay.wezterm").apply_to_config(config, passrelay_settings)
 ```
 
-##### Result:
-
-When you hit `CTRL+p`, you can choose between "bob" or "alice". If you choose "bob", you will get `bob:testpass` output into your terminal.
-
-#### Basic Example 2
-
-You can also use functions for `get_userlist` and `get_password` instead (or for just one of them if you wish). Here's an example with two functions:
+Then, get and load the plugin:
 
 ```lua
-local wezterm = require 'wezterm'
-local config = wezterm.config_builder()
+passrelay = wezterm.plugin.require("https://github.com/dfaerch/passrelay.wezterm")
+```
 
-local passrelay_settings = {
-  get_userlist = function()
+Finally, configure it and apply the configuration:
+
+```lua
+passrelay.apply_to_config(config,
+  {
+    -- Function that returns users
+    get_userlist = function()
       return {"alice", "bob"}
-  end,
-  get_password = function(user)
-      local users = {
-          bob = "password123",
-          alice = "s00pers3cret",
-      }
-      return users[user]
-  end,
+    end,
 
-  hotkey = {
+    -- Command to get password
+    get_password = "~/path/to/keepassxc-proxy-cli/keepassxc-proxy-cli.py -k ~/.keepassxc-proxy-cli.key -f %p -u 'wezterm://%user'",
+
+    hotkey = {
       mods = 'CTRL',
-      key  = 'p',
-  },
-
-  toast_time = 3000,
-}
-
-wezterm.plugin.require("https://github.com/dfaerch/passrelay.wezterm").apply_to_config(config, passrelay_settings)
+      key  = 'p'
+    }
+  }
+)
 ```
 
-##### Result:
-
-When you hit `CTRL+p`, you can choose between "alice" or "bob". The user will then be used to look up in the table in the get_password() function, and in the case of alice, return `password123`.
-
-### KeePassXC Example
-
-*(Example content to be added.)*
+**Note** the `get_userlist` part—since KeePassXC doesn't allow us to list users, we don't need a command here. Instead, we just added a Lua function that, in this case, returns two hard-coded usernames. Remember to set your own users here. If you only need one user and want to skip the user-selection step, simply remove the `get_userlist` entry entirely.

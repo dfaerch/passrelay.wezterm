@@ -2,8 +2,6 @@
 
 Password Manager Integration for WezTerm
 
-*This plugin is a work in progress.*
-
 ## Description
 
 PassRelay is a plugin for WezTerm that enables integration with external password managers by defining external commands or Lua functions to retrieve passwords and optionally user accounts.

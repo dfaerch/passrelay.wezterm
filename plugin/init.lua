@@ -3,14 +3,26 @@ local wezterm = require("wezterm")
 ---@class password_fetch_module
 local M = { version = 1 }
 
---- Function to display an input selector for user list
--- @param window Window The wezterm window object
--- @param user_accounts table The list of user accounts
--- @param callback function Function to call with the selected account
+local function extract_field(obj, path)
+    local parts = {}
+    for p in path:gmatch("[^.]+") do
+        table.insert(parts, p)
+    end
+    local value = obj
+    for _, part in ipairs(parts) do
+        if type(value) == "table" then
+            value = value[part]
+        else
+            return nil
+        end
+    end
+    return value
+end
+
 local function displaySelector(window, user_accounts, callback)
     local choices = {}
     for _, account in ipairs(user_accounts) do
-        table.insert(choices, {label = account, id = account})
+        table.insert(choices, { label = account.label, id = account.id })
     end
 
     window:perform_action(
@@ -28,7 +40,6 @@ local function displaySelector(window, user_accounts, callback)
 end
 
 -- Determine if cmd is a command or a function call, then execute
--- Determine if cmd is a command or a function call, then execute
 local function run_command(cmd, ...)
     local success, output, stderr
     local args = { ... }
@@ -43,8 +54,7 @@ local function run_command(cmd, ...)
 
         -- If arguments are provided, substitute `%user` in the command string
         if #args > 0 and type(args[1]) == "string" then
-            local selected_account = args[1]
-            cmd_str = cmd_str:gsub("%%user", selected_account)
+            cmd_str = cmd_str:gsub("%%user", args[1])
         end
 
         -- Execute the command string
@@ -65,61 +75,80 @@ local function run_command(cmd, ...)
     return output, nil
 end
 
---- Getting a password
--- @param window Window The wezterm window object
--- @param pane Pane The wezterm pane object
--- @param module_settings table The settings for this module
 function M.get_password(window, pane, module_settings)
     local user_accounts = {}
 
-    -- Check if `get_userlist` is provided
-    if module_settings.get_userlist then
-        -- Fetch the user list via `get_userlist`
-        local user_list, err = run_command(module_settings.get_userlist)
+    local get_userlist_def = module_settings.get_userlist
+    local has_get_userlist = get_userlist_def ~= nil
 
-        -- Handle potential errors
-        if not user_list then
-            window:toast_notification("PassRelay Error", "Failed to get user list.\n\n" .. tostring(err), nil, module_settings.toast_time)
-            return
+    if has_get_userlist then
+        local userlist_format = "text"
+        local command = nil
+        local id_path, label_path = nil, nil
+
+        if type(get_userlist_def) == "table" then
+            userlist_format = get_userlist_def.format or "text"
+            command = get_userlist_def.command
+            id_path = get_userlist_def.id_path
+            label_path = get_userlist_def.label_path
+        else
+            command = get_userlist_def
         end
 
-        -- Process the user list
-        if type(user_list) == "string" then
-            -- Split user list by newline
-            for account in user_list:gmatch("[^\r\n]+") do
-                table.insert(user_accounts, account)
-            end
-        elseif type(user_list) == "table" then
-            -- Assume it's a list of account names
-            user_accounts = user_list
+        local user_list_output, err = run_command(command)
+        if not user_list_output then
+            window:toast_notification("PassRelay Error", "Failed to get user list.\n\n" .. tostring(err), nil, module_settings.toast_time)
+            wezterm.log_error("Failed to get user list: " .. tostring(err))
+            has_get_userlist = false
         else
-            window:toast_notification("PassRelay Error", "Invalid user list format", nil, module_settings.toast_time)
-            return
+            if userlist_format == "json" then
+                local decoded = nil
+                local ok, json_err = pcall(function()
+                    decoded = wezterm.json_parse(user_list_output)
+                end)
+                if not ok or type(decoded) ~= "table" then
+                    window:toast_notification("PassRelay Error", "Invalid JSON user list format", nil, module_settings.toast_time)
+                    wezterm.log_error("Invalid JSON user list format")
+                    has_get_userlist = false
+                else
+                    for _, entry in ipairs(decoded) do
+                        local uid = extract_field(entry, id_path)
+                        local lbl = extract_field(entry, label_path)
+                        if uid and lbl then
+                            table.insert(user_accounts, {label = lbl, id = uid})
+                        end
+                    end
+                end
+            elseif userlist_format == "text" then
+                for account in user_list_output:gmatch("[^\r\n]+") do
+                    table.insert(user_accounts, {label = account, id = account})
+                end
+            else
+                window:toast_notification("PassRelay Error", "Unknown user list format: " .. tostring(userlist_format), nil, module_settings.toast_time)
+                wezterm.log_error("Unknown user list format: " .. tostring(userlist_format))
+                has_get_userlist = false
+            end
         end
     end
 
-    -- If no user accounts found, proceed to password fetch without selection
-    if #user_accounts == 0 then
-        -- Run `get_password` without account substitution
+    if not has_get_userlist or #user_accounts == 0 then
         local password, err = run_command(module_settings.get_password)
-
         if password then
             window:perform_action(wezterm.action.SendString(password), pane)
         else
             window:toast_notification("PassRelay Error", "Failed to get password.\n\n" .. tostring(err), nil, module_settings.toast_time)
+            wezterm.log_error("Failed to get password: " .. tostring(err))
         end
         return
     end
 
-    -- Otherwise, prompt user for account selection
     displaySelector(window, user_accounts, function(selected_account)
-        -- Run `get_password` with the selected account
         local password, err = run_command(module_settings.get_password, selected_account)
-
         if password then
             window:perform_action(wezterm.action.SendString(password), pane)
         else
             window:toast_notification("PassRelay Error", "Failed to get password.\n\n" .. tostring(err), nil, module_settings.toast_time)
+            wezterm.log_error("Failed to get password: " .. tostring(err))
         end
     end)
 end
@@ -133,19 +162,16 @@ function M.apply_to_config(config, module_settings)
 
     config.keys = config.keys or {}
 
-    if not module_settings or not module_settings.toast_time then
+    if not module_settings.toast_time then
         module_settings.toast_time = 3000
     end
 
-    if not module_settings or not module_settings.hotkey or not module_settings.hotkey.key or not module_settings.hotkey.mods then
-        module_settings.hotkey = {
-            mods = 'CTRL',
-            key  = 'p'
-        }
+    if not module_settings.hotkey or not module_settings.hotkey.key or not module_settings.hotkey.mods then
+        module_settings.hotkey = { mods = 'CTRL', key = 'p' }
     end
 
     table.insert(config.keys, {
-        mods = module_settings.hotkey.mods ,
+        mods = module_settings.hotkey.mods,
         key = module_settings.hotkey.key,
         action = wezterm.action_callback(function(window, pane)
             M.get_password(window, pane, module_settings)

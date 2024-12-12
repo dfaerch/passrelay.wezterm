@@ -42,13 +42,30 @@ Check out the `Examples` below for more complete examples.
 ***Note:***: All options are optional except for `get_password`.
 
 ### **get_userlist**
+### **get_userlist**
 
-A command (string) or function to fetch the list of user accounts. If not provided, no user selection will occur.
+Specifies how to fetch the list of user accounts. If not provided, no user selection will occur.
 
-- **If given a string**, this string will be executed by `sh -c`. For example, `get_userlist = "/bin/echo bob"` will return a user list with one user named "bob". The format is "one username per line" — thus `get_userlist = '/bin/echo -e "bob\nalice"'` will return two users.
+- If `get_userlist` is given as a simple string, it is interpreted as shorthand for:  
+  `get_userlist = { format = "text", command = "your_command" }`  
+  The default `format` is `"text"`, and the command's output is treated as plain text with one username per line.
 
-- **If given a function**, the function will be called, and a list of users is expected to be returned. Example:
+ **JSON format**: Use a table to specify the `format`, `command`, and the fields `id_path` and `label_path`. Example:  
+  ```lua
+  get_userlist = 
+    { 
+      format = "json", 
+      command = "your_command_to_fetch_json", 
+      id_path = "id", 
+      label_path = "additional_information" 
+    }
+  ```  
+  `label_path` is used to identify what field in the json should be extract to use for the label (ie the name displayed to the user), and `id_path` is for the `id` that will not be displayed, but will be sent to the %user param of `get_password`.
 
+- **Plain text format**: When the `format` is `"text"`, the output should contain one username per line. Example:  
+  `get_userlist = "/bin/echo -e \"bob\\nalice\""`
+
+- **Function**: If a function is provided, it will be called, and a list of users is expected to be returned. Example:  
 ```lua
 get_userlist = function()
     return {"alice", "bob"}
@@ -80,6 +97,10 @@ A table defining the keybinding for triggering password retrieval:
 
 Default is `CTRL+p`.
 
+### ***debug***
+
+Set to 1, to get extra debug ouput. *NOTE*: This will show/log passwords too.
+
 ### **toast_time**
 
 Duration (in milliseconds) for toast notifications. Toasts display error information.
@@ -89,6 +110,9 @@ Default is 3000 ms.
 ## Developer Examples
 
 If you are looking to integrate with a password manager yourself, this section is for you.
+
+**NOTE**: PassRelay is meant to talk to password managers that are already running, eg. as an agent or a GUI, and thus currently has no way of prompting the user for a master password to unlock the password manager.
+
 
 ### Basic Examples
 

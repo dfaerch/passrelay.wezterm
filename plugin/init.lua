@@ -1,6 +1,5 @@
 local wezterm = require("wezterm")
 
----@class password_fetch_module
 local M = { version = 1 }
 
 local function extract_field(obj, path)
@@ -59,6 +58,12 @@ local function run_command(cmd, ...)
 
         -- Execute the command string
         success, output, stderr = wezterm.run_child_process({"sh", "-c", cmd_str})
+        if M.debug then
+            wezterm.log_error("run_command() - cmd_str: " .. cmd_str)    
+            wezterm.log_error("run_command() - output: " .. output)
+            wezterm.log_error("run_command() - strderr: " .. stderr)    
+        end
+
     end
 
     -- Error handling and output processing
@@ -75,7 +80,7 @@ local function run_command(cmd, ...)
     return output, nil
 end
 
-function M.get_password(window, pane, module_settings)
+function M.exec_password_manager(window, pane, module_settings)
     local user_accounts = {}
 
     local get_userlist_def = module_settings.get_userlist
@@ -86,6 +91,7 @@ function M.get_password(window, pane, module_settings)
         local command = nil
         local id_path, label_path = nil, nil
 
+        -- detect if get_userlist is a table
         if type(get_userlist_def) == "table" then
             userlist_format = get_userlist_def.format or "text"
             command = get_userlist_def.command
@@ -162,6 +168,11 @@ function M.apply_to_config(config, module_settings)
 
     config.keys = config.keys or {}
 
+    if module_settings.debug then
+        wezterm.log_warn("enabling debug")
+        M.debug = module_settings.debug
+    end
+
     if not module_settings.toast_time then
         module_settings.toast_time = 3000
     end
@@ -174,7 +185,7 @@ function M.apply_to_config(config, module_settings)
         mods = module_settings.hotkey.mods,
         key = module_settings.hotkey.key,
         action = wezterm.action_callback(function(window, pane)
-            M.get_password(window, pane, module_settings)
+            M.exec_password_manager(window, pane, module_settings)
         end),
     })
 end

@@ -2,7 +2,7 @@
 
 This documents how to use PassRelay to integrate a password-manager into Wezterm. 
 
-This is integrating with the **Desktop version of 1Password**.
+This integrating for the **Desktop version of 1Password**.
 
 ## Prerequisites
 

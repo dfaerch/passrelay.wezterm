@@ -101,8 +101,13 @@ function M.exec_password_manager(window, pane, module_settings)
             command = get_userlist_def
         end
 
+        -- If the command is a function, set the format to "table"
+        if type(command) == "function" then
+            userlist_format = "table"
+        end
+
         local user_list_output, err = run_command(command)
-        if not user_list_output then
+        if not user_list_output or user_list_output == "" then
             window:toast_notification("PassRelay Error", "Failed to get user list.\n\n" .. tostring(err), nil, module_settings.toast_time)
             wezterm.log_error("Failed to get user list: " .. tostring(err))
             has_get_userlist = false
@@ -127,6 +132,10 @@ function M.exec_password_manager(window, pane, module_settings)
                 end
             elseif userlist_format == "text" then
                 for account in user_list_output:gmatch("[^\r\n]+") do
+                    table.insert(user_accounts, {label = account, id = account})
+                end
+            elseif userlist_format == "table" and type(user_list_output) == "table" then
+                for _, account in ipairs(user_list_output) do
                     table.insert(user_accounts, {label = account, id = account})
                 end
             else

@@ -38,3 +38,15 @@ local passrelay_settings = {
 }
 passrelay.apply_to_config(config,passrelay_settings)
 ```
+
+## Troubleshooting
+
+If you're getting this error:
+
+```
+Command failed: [ERROR] ... connecting to desktop app: connection reset, make sure 1Password CLI is installed correctly,...
+```
+
+one reported fix (see https://github.com/dfaerch/passrelay.wezterm/issues/10#issuecomment-4094587393) was to set this environment variable: `OP_BIOMETRIC_UNLOCK_ENABLED=true`.
+
+

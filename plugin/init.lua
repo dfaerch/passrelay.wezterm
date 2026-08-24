@@ -5,6 +5,138 @@ local M = {}
 -- Track last local echo failure time per window
 local last_echo_fail = {}
 
+------------------------
+-- PassRelay update availability check
+------------------------
+
+local DEFAULT_UPDATE_BRANCH = "v1"
+local UPDATE_STATE_DIR = ".data"
+local UPDATE_STATE_FILE = "update-state"
+local SECONDS_PER_HOUR = 60 * 60
+local SECONDS_PER_DAY = 24 * SECONDS_PER_HOUR
+local update_checks_in_progress = {}
+
+local function trim(value)
+    return value and value:match("^%s*(.-)%s*$") or ""
+end
+
+local function state_path(plugin_dir)
+    return plugin_dir .. "/" .. UPDATE_STATE_DIR .. "/" .. UPDATE_STATE_FILE
+end
+
+local function read_update_state(plugin_dir)
+    local state = {}
+    local file = io.open(state_path(plugin_dir), "r")
+    if not file then return state end
+
+    for line in file:lines() do
+        local key, value = line:match("^([a-z_]+)=(.*)$")
+        if key then state[key] = value end
+    end
+    file:close()
+    return state
+end
+
+local function write_update_state(plugin_dir, state)
+    local created = wezterm.run_child_process({ "mkdir", "-p", plugin_dir .. "/" .. UPDATE_STATE_DIR })
+    if not created then
+        wezterm.log_warn("PassRelay update check: unable to create state directory")
+        return false
+    end
+
+    local file, err = io.open(state_path(plugin_dir), "w")
+    if not file then
+        wezterm.log_warn("PassRelay update check: unable to save state: " .. tostring(err))
+        return false
+    end
+
+    for _, key in ipairs({ "last_check", "remote_hash", "branch", "first_seen", "first_notified", "final_notification_sent" }) do
+        if state[key] then file:write(key .. "=" .. state[key] .. "\n") end
+    end
+    file:close()
+    return true
+end
+
+local function passrelay_plugin_dir()
+    local source = debug.getinfo(1, "S").source
+    if source:sub(1, 1) ~= "@" then return end
+
+    local init_path = source:sub(2)
+    for _, plugin in ipairs(wezterm.plugin.list()) do
+        if init_path == plugin.plugin_dir .. "/plugin/init.lua" then return plugin.plugin_dir end
+    end
+end
+
+local function should_check_for_update(state, now, interval)
+    local last_check = tonumber(state.last_check) or 0
+    local first_seen = tonumber(state.first_seen)
+    if first_seen and now - first_seen < 7 * SECONDS_PER_DAY then
+        interval = 8 * SECONDS_PER_HOUR
+    end
+    return now - last_check >= interval
+end
+
+local function check_for_update(window, module_settings, plugin_dir)
+    local now = os.time()
+    local state = read_update_state(plugin_dir)
+
+    local local_ok, local_hash = wezterm.run_child_process({ "git", "-C", plugin_dir, "rev-parse", "HEAD" })
+    if not local_ok then
+        wezterm.log_warn("PassRelay update check: unable to read local revision")
+        return
+    end
+
+    local remote_ok, remote_output = wezterm.run_child_process({
+        "git", "-C", plugin_dir, "ls-remote", "origin", "refs/heads/" .. module_settings.update_check_branch,
+    })
+    local remote_hash, remote_branch = remote_output and remote_output:match("^([0-9a-fA-F]+)[ \t]+refs/heads/(.-)%s*$")
+    if not remote_ok or not remote_hash or remote_branch ~= module_settings.update_check_branch then
+        wezterm.log_warn("PassRelay update check: unable to query origin/" .. module_settings.update_check_branch)
+        return
+    end
+
+    local local_revision = trim(local_hash)
+    if state.branch ~= module_settings.update_check_branch or state.remote_hash ~= remote_hash then
+        state.remote_hash = remote_hash
+        state.branch = module_settings.update_check_branch
+        state.first_seen = tostring(now)
+        state.first_notified = nil
+        state.final_notification_sent = nil
+    end
+    state.last_check = tostring(now)
+
+    if remote_hash ~= local_revision then
+        if not state.first_notified then
+            window:toast_notification("PassRelay", "A PassRelay update is available.", nil, module_settings.toast_time)
+            state.first_notified = tostring(now)
+        elseif not state.final_notification_sent and now - (tonumber(state.first_seen) or now) >= 8 * SECONDS_PER_DAY then
+            window:toast_notification(
+                "PassRelay",
+                "PassRelay update still available. You won't be notified about this specific update again.",
+                nil,
+                module_settings.toast_time
+            )
+            state.final_notification_sent = "true"
+        end
+    end
+
+    write_update_state(plugin_dir, state)
+end
+
+local function schedule_update_check(window, module_settings)
+    local plugin_dir = passrelay_plugin_dir()
+    if not plugin_dir or update_checks_in_progress[plugin_dir] then return end
+
+    local state = read_update_state(plugin_dir)
+    if not should_check_for_update(state, os.time(), module_settings.update_check_interval) then return end
+
+    update_checks_in_progress[plugin_dir] = true
+    wezterm.time.call_after(0, function()
+        check_for_update(window, module_settings, plugin_dir)
+        update_checks_in_progress[plugin_dir] = nil
+    end)
+end
+
 local function extract_field(obj, path)
     for part in path:gmatch("[^.]+") do
         if type(obj) == "table" then
@@ -164,6 +296,10 @@ function M._continue_password(window, pane, module_settings, bypass_local_echo_c
 end
 
 function M.exec_password_manager(window, pane, module_settings)
+  if module_settings.check_for_updates then
+    schedule_update_check(window, module_settings)
+  end
+
   if module_settings.detect_local_echo_before_userlist then
     local win_id = tostring(window:window_id())
     local now = tonumber(wezterm.time.now():format("%s"))
@@ -222,6 +358,9 @@ function M.apply_to_config(config, module_settings)
     end
 
     module_settings.toast_time = module_settings.toast_time or 3000
+    module_settings.check_for_updates = module_settings.check_for_updates ~= false
+    module_settings.update_check_interval = module_settings.update_check_interval or SECONDS_PER_DAY
+    module_settings.update_check_branch = module_settings.update_check_branch or DEFAULT_UPDATE_BRANCH
     module_settings.hotkey = module_settings.hotkey or { mods = 'CTRL', key = 'p' }
     module_settings.detect_local_echo_chars = module_settings.detect_local_echo_chars or ":"
     module_settings.detect_local_echo_time  = module_settings.detect_local_echo_time or 200

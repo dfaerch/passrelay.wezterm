@@ -34,6 +34,8 @@ local passrelay_settings = {
         key  = ...,      -- Key to press (e.g., "p")
     },
     toast_time = ...,    -- Duration for toast notifications in milliseconds
+    check_for_updates = ...,      -- Set false to disable update-availability checks
+    update_check_interval = ...,  -- Normal check interval in seconds (default: 86400)
 }
 ```
 
@@ -106,6 +108,31 @@ Set to 1, to get extra debug ouput. *NOTE*: This will show/log passwords too.
 Duration (in milliseconds) for toast notifications. Toasts display error information.
 
 Default is 3000 ms.
+
+### **check_for_updates**
+
+Set to `false` to disable PassRelay's update check. It is enabled by default.
+
+The check only compares the local Git checkout revision with `origin/v1` using
+`git ls-remote`; it does not fetch, pull, or update the plugin checkout.
+
+A toast is displayed when the local Git revision differs from the remote, indicating
+that an update is available. Users are notified about a specific release at most twice,
+after which PassRelay stops notifying about that release to avoid pestering the user.
+
+The check is triggered when PassRelay is invoked using its hotkey. Under normal circumstances,
+it runs at most once every 24 hours. For the week following detection of a new release, it
+runs at most once every 8 hours so users can be notified more quickly about follow-up bugfixes.
+
+### **update_check_interval**
+
+The normal update-check interval in seconds. Default is 86400 (24 hours).
+
+### **update_check_branch**
+
+_This is an internal setting, used for debugging and testing, and should not be set by regular users._
+
+The branch queried on the checkout's `origin` remote. Default is `v1`.
 
 ## Developer Examples
 

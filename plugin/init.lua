@@ -10,6 +10,7 @@ local last_echo_fail = {}
 ------------------------
 
 local DEFAULT_UPDATE_BRANCH = "v1"
+local PASSRELAY_PLUGIN_URL = "https://github.com/dfaerch/passrelay.wezterm"
 local UPDATE_STATE_DIR = ".data"
 local UPDATE_STATE_FILE = "update-state"
 local SECONDS_PER_HOUR = 60 * 60
@@ -58,12 +59,9 @@ local function write_update_state(plugin_dir, state)
 end
 
 local function passrelay_plugin_dir()
-    local source = debug.getinfo(1, "S").source
-    if source:sub(1, 1) ~= "@" then return end
-
-    local init_path = source:sub(2)
     for _, plugin in ipairs(wezterm.plugin.list()) do
-        if init_path == plugin.plugin_dir .. "/plugin/init.lua" then return plugin.plugin_dir end
+        local url = (plugin.url or ""):gsub("/+$", ""):gsub("%.git$", "")
+        if url == PASSRELAY_PLUGIN_URL then return plugin.plugin_dir end
     end
 end
 

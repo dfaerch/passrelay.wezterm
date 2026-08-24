@@ -5,7 +5,6 @@ local M = {}
 -- Track last local echo failure time per window
 local last_echo_fail = {}
 
-
 ------------------------
 -- PassRelay update availability check
 ------------------------

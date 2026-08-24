@@ -1,6 +1,6 @@
 local wezterm = require("wezterm")
 
-local M = { version = 1.1 }
+local M = { version = 1.2 }
 
 -- Track last local echo failure time per window
 local last_echo_fail = {}

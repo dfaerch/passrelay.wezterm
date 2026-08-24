@@ -33,7 +33,7 @@ local passrelay_settings = {
     id_path = "id",
     label_path = "title"
   },
-  get_password = "op item get %user --fields password --reveal",
+  get_password = "op read 'op://{vault.id}/{id}/password'",
   hotkey = { mods = 'CTRL', key = 'p' },
 }
 passrelay.apply_to_config(config,passrelay_settings)

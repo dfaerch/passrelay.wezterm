@@ -12,7 +12,7 @@ local last_echo_fail = {}
 local DEFAULT_UPDATE_BRANCH = "v1"
 local PASSRELAY_PLUGIN_URL = "https://github.com/dfaerch/passrelay.wezterm"
 local UPDATE_STATE_DIR = ".data"
-local UPDATE_STATE_FILE = "update-state"
+local UPDATE_STATE_FILE_PREFIX = "update-state-"
 local SECONDS_PER_HOUR = 60 * 60
 local SECONDS_PER_DAY = 24 * SECONDS_PER_HOUR
 local update_checks_in_progress = {}
@@ -21,13 +21,19 @@ local function trim(value)
     return value and value:match("^%s*(.-)%s*$") or ""
 end
 
-local function state_path(plugin_dir)
-    return plugin_dir .. "/" .. UPDATE_STATE_DIR .. "/" .. UPDATE_STATE_FILE
+local function state_filename(branch)
+    return UPDATE_STATE_FILE_PREFIX .. branch:gsub("[^%w%._-]", function(char)
+        return string.format("%%%02X", string.byte(char))
+    end)
 end
 
-local function read_update_state(plugin_dir)
+local function state_path(plugin_dir, branch)
+    return plugin_dir .. "/" .. UPDATE_STATE_DIR .. "/" .. state_filename(branch)
+end
+
+local function read_update_state(plugin_dir, branch)
     local state = {}
-    local file = io.open(state_path(plugin_dir), "r")
+    local file = io.open(state_path(plugin_dir, branch), "r")
     if not file then return state end
 
     for line in file:lines() do
@@ -38,20 +44,20 @@ local function read_update_state(plugin_dir)
     return state
 end
 
-local function write_update_state(plugin_dir, state)
+local function write_update_state(plugin_dir, branch, state)
     local created = wezterm.run_child_process({ "mkdir", "-p", plugin_dir .. "/" .. UPDATE_STATE_DIR })
     if not created then
         wezterm.log_warn("PassRelay update check: unable to create state directory")
         return false
     end
 
-    local file, err = io.open(state_path(plugin_dir), "w")
+    local file, err = io.open(state_path(plugin_dir, branch), "w")
     if not file then
         wezterm.log_warn("PassRelay update check: unable to save state: " .. tostring(err))
         return false
     end
 
-    for _, key in ipairs({ "last_check", "remote_hash", "branch", "first_seen", "first_notified", "final_notification_sent" }) do
+    for _, key in ipairs({ "last_check", "remote_hash", "first_seen", "first_notified", "final_notification_sent" }) do
         if state[key] then file:write(key .. "=" .. state[key] .. "\n") end
     end
     file:close()
@@ -76,7 +82,7 @@ end
 
 local function check_for_update(window, module_settings, plugin_dir)
     local now = os.time()
-    local state = read_update_state(plugin_dir)
+    local state = read_update_state(plugin_dir, module_settings.update_check_branch)
 
     local local_ok, local_hash, local_stderr = wezterm.run_child_process({ "git", "-C", plugin_dir, "rev-parse", "HEAD" })
     if not local_ok then
@@ -107,9 +113,8 @@ local function check_for_update(window, module_settings, plugin_dir)
     end
 
     local local_revision = trim(local_hash)
-    if state.branch ~= module_settings.update_check_branch or state.remote_hash ~= remote_hash then
+    if state.remote_hash ~= remote_hash then
         state.remote_hash = remote_hash
-        state.branch = module_settings.update_check_branch
         state.first_seen = tostring(now)
         state.first_notified = nil
         state.final_notification_sent = nil
@@ -131,14 +136,14 @@ local function check_for_update(window, module_settings, plugin_dir)
         end
     end
 
-    write_update_state(plugin_dir, state)
+    write_update_state(plugin_dir, module_settings.update_check_branch, state)
 end
 
 local function schedule_update_check(window, module_settings)
     local plugin_dir = passrelay_plugin_dir()
     if not plugin_dir or update_checks_in_progress[plugin_dir] then return end
 
-    local state = read_update_state(plugin_dir)
+    local state = read_update_state(plugin_dir, module_settings.update_check_branch)
     if not should_check_for_update(state, os.time(), module_settings.update_check_interval) then return end
 
     update_checks_in_progress[plugin_dir] = true

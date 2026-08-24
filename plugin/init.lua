@@ -127,6 +127,7 @@ local function check_for_update(window, module_settings, plugin_dir)
     state.last_check = tostring(now)
 
     if remote_hash ~= local_revision then
+        wezterm.log_info("PassRelay update check: update available; local revision is " .. local_revision)
         if not state.first_notified then
             window:toast_notification("PassRelay", "A PassRelay update is available.", nil, module_settings.toast_time)
             state.first_notified = tostring(now)
@@ -139,6 +140,8 @@ local function check_for_update(window, module_settings, plugin_dir)
             )
             state.final_notification_sent = "true"
         end
+    else
+        wezterm.log_info("PassRelay update check: local revision is current")
     end
 
     write_update_state(plugin_dir, module_settings.update_check_branch, state)
@@ -335,10 +338,6 @@ function M._continue_password(window, pane, module_settings, bypass_local_echo_c
 end
 
 function M.exec_password_manager(window, pane, module_settings)
-  if module_settings.check_for_updates then
-    schedule_update_check(window, module_settings)
-  end
-
   if module_settings.detect_local_echo_before_userlist then
     local win_id = tostring(window:window_id())
     local now = tonumber(wezterm.time.now():format("%s"))
@@ -372,6 +371,10 @@ function M.exec_password_manager(window, pane, module_settings)
         return
       end
     end
+  end
+
+  if module_settings.check_for_updates then
+    schedule_update_check(window, module_settings)
   end
 
   M._continue_password(window, pane, module_settings)

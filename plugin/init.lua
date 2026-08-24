@@ -50,7 +50,7 @@ local function run_command(cmd, ...)
     else
         local cmd_str = cmd
         if #args > 0 and type(args[1]) == "string" then
-            cmd_str = cmd_str:gsub("%%user", args[1])
+            cmd_str = cmd_str:gsub("%%user", function() return args[1] end)
         end
         success, output, stderr = wezterm.run_child_process({ "sh", "-c", cmd_str })
         if M.debug then
@@ -210,7 +210,6 @@ end
 function M.apply_to_config(config, module_settings)
     if not module_settings or not module_settings.get_password then
         wezterm.log_error("module_settings are missing required setting get_password")
-        wezterm.toast_notification("Configuration Error", "module_settings are missing required get_password", nil, 5000)
         return
     end
 

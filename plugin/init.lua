@@ -15,10 +15,17 @@ local UPDATE_STATE_DIR = ".data"
 local UPDATE_STATE_FILE_PREFIX = "update-state-"
 local SECONDS_PER_HOUR = 60 * 60
 local SECONDS_PER_DAY = 24 * SECONDS_PER_HOUR
+local REMINDER_INTERVAL = 14 * SECONDS_PER_DAY
 local update_checks_in_progress = {}
 
 local function trim(value)
     return value and value:match("^%s*(.-)%s*$") or ""
+end
+
+local function update_notification_message(first_seen)
+    local timestamp = os.date("%Y-%m-%d %H:%M:%S %Z", tonumber(first_seen) or os.time())
+    return "PassRelay pending update since " .. timestamp
+        .. "\nPassRelay update available. See docs/UPGRADING.md on GitHub."
 end
 
 local function state_filename(branch)
@@ -57,7 +64,7 @@ local function write_update_state(plugin_dir, branch, state)
         return false
     end
 
-    for _, key in ipairs({ "last_check", "remote_hash", "first_seen", "first_notified", "final_notification_sent" }) do
+    for _, key in ipairs({ "last_check", "remote_hash", "first_seen", "first_notified", "last_reminder", "final_notification_sent" }) do
         if state[key] then file:write(key .. "=" .. state[key] .. "\n") end
     end
     file:close()
@@ -121,23 +128,32 @@ local function check_for_update(window, module_settings, plugin_dir)
         state.remote_hash = remote_hash
         state.first_seen = tostring(now)
         state.first_notified = nil
-        state.final_notification_sent = nil
+        state.last_reminder = nil
+        state.final_notification_sent = "false"
     end
     state.last_check = tostring(now)
 
     if remote_hash ~= local_revision then
         wezterm.log_info("PassRelay update check: update available; local revision is " .. local_revision)
+        local last_reminder = tonumber(state.last_reminder)
         if not state.first_notified then
-            window:toast_notification("PassRelay", "A PassRelay update is available.", nil, module_settings.toast_time)
-            state.first_notified = tostring(now)
-        elseif not state.final_notification_sent and now - (tonumber(state.first_seen) or now) >= 8 * SECONDS_PER_DAY then
             window:toast_notification(
                 "PassRelay",
-                "PassRelay update still available. You won't be notified about this specific update again.",
+                update_notification_message(state.first_seen),
                 nil,
                 module_settings.toast_time
             )
-            state.final_notification_sent = "true"
+            state.first_notified = tostring(now)
+        elseif now - (tonumber(state.first_seen) or now) >= 8 * SECONDS_PER_DAY
+            and (not last_reminder or now - last_reminder >= REMINDER_INTERVAL)
+        then
+            window:toast_notification(
+                "PassRelay",
+                update_notification_message(state.first_seen),
+                nil,
+                module_settings.toast_time
+            )
+            state.last_reminder = tostring(now)
         end
     else
         wezterm.log_info("PassRelay update check: local revision is current")

@@ -116,9 +116,9 @@ Set to `false` to disable PassRelay's update check. It is enabled by default.
 The check only compares the local Git checkout revision with `origin/v1` using
 `git ls-remote`; it does not fetch, pull, or update the plugin checkout.
 
-A toast is displayed when the local Git revision differs from the remote, indicating
-that an update is available. Users are notified about a specific release at most twice,
-after which PassRelay stops notifying about that release to avoid pestering the user.
+A notification toast is displayed when the local Git revision differs from the remote, indicating
+that an update is available. After the initial notification, the first reminder is sent after eight days and later
+reminders are sent every two weeks while the update remains available.
 
 The check is triggered when PassRelay is invoked using its hotkey. Under normal circumstances,
 it runs at most once every 24 hours. For the week following detection of a new release, it

@@ -6,7 +6,7 @@ local M = {}
 local last_echo_fail = {}
 
 ------------------------
--- PassRelay update availability check
+-- PassRelay update check
 ------------------------
 
 local DEFAULT_UPDATE_BRANCH = "v1"
@@ -65,7 +65,7 @@ local function write_update_state(plugin_dir, branch, state)
         return false
     end
 
-    for _, key in ipairs({ "last_check", "remote_hash", "first_seen", "first_notified", "last_reminder", "final_notification_sent" }) do
+    for _, key in ipairs({ "last_check", "remote_hash", "first_seen", "first_notified", "last_reminder" }) do
         if state[key] then file:write(key .. "=" .. state[key] .. "\n") end
     end
     file:close()
@@ -79,18 +79,24 @@ local function passrelay_plugin_dir()
     end
 end
 
-local function should_check_for_update(state, now, interval)
-    local last_check = tonumber(state.last_check) or 0
+local function effective_update_check_interval(state, now, interval)
     local first_seen = tonumber(state.first_seen)
     if first_seen and now - first_seen < 7 * SECONDS_PER_DAY then
         interval = math.min(interval, 8 * SECONDS_PER_HOUR)
     end
-    return now - last_check >= interval
+    return interval
+end
+
+local function should_check_for_update(state, now, interval)
+    local last_check = tonumber(state.last_check) or 0
+    return now - last_check >= effective_update_check_interval(state, now, interval)
 end
 
 local function check_for_update(window, module_settings, plugin_dir)
     local now = os.time()
     local state = read_update_state(plugin_dir, module_settings.update_check_branch)
+    state.last_check = tostring(now)
+    write_update_state(plugin_dir, module_settings.update_check_branch, state)
     wezterm.log_info("PassRelay update check: checking origin/" .. module_settings.update_check_branch)
 
     local local_ok, local_hash, local_stderr = wezterm.run_child_process({ "git", "-C", plugin_dir, "rev-parse", "HEAD" })
@@ -127,7 +133,7 @@ local function check_for_update(window, module_settings, plugin_dir)
 
     local local_revision = trim(local_hash)
     if remote_hash == local_revision then
-        if state.first_seen or state.first_notified or state.last_reminder or state.final_notification_sent then
+        if state.first_seen or state.first_notified or state.last_reminder then
             wezterm.log_info("PassRelay update check: local revision is current; resetting update state")
             state = { remote_hash = remote_hash }
         else
@@ -144,9 +150,7 @@ local function check_for_update(window, module_settings, plugin_dir)
         state.first_seen = tostring(now)
         state.first_notified = nil
         state.last_reminder = nil
-        state.final_notification_sent = "false"
     end
-    state.last_check = tostring(now)
 
     wezterm.log_info("PassRelay update check: update available; local revision is " .. local_revision)
     local last_reminder = tonumber(state.last_reminder)
@@ -187,11 +191,7 @@ local function schedule_update_check(window, module_settings)
     local state = read_update_state(plugin_dir, module_settings.update_check_branch)
     local now = os.time()
     if not should_check_for_update(state, now, module_settings.update_check_interval) then
-        local interval = module_settings.update_check_interval
-        local first_seen = tonumber(state.first_seen)
-        if first_seen and now - first_seen < 7 * SECONDS_PER_DAY then
-            interval = math.min(interval, 8 * SECONDS_PER_HOUR)
-        end
+        local interval = effective_update_check_interval(state, now, module_settings.update_check_interval)
         local next_check = (tonumber(state.last_check) or now) + interval
         wezterm.log_info(
             "PassRelay update check: origin/" .. module_settings.update_check_branch
@@ -255,7 +255,7 @@ local function run_command(cmd, ...)
     else
         local cmd_str = cmd
         if #args > 0 and type(args[1]) == "string" then
-            cmd_str = cmd_str:gsub("%%user", args[1])
+            cmd_str = cmd_str:gsub("%%user", function() return args[1] end)
         end
         success, output, stderr = wezterm.run_child_process({ "sh", "-c", cmd_str })
         if M.debug then
@@ -419,7 +419,6 @@ end
 function M.apply_to_config(config, module_settings)
     if not module_settings or not module_settings.get_password then
         wezterm.log_error("module_settings are missing required setting get_password")
-        wezterm.toast_notification("Configuration Error", "module_settings are missing required get_password", nil, 5000)
         return
     end
 

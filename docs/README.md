@@ -44,7 +44,6 @@ Check out the `Examples` below for more complete examples.
 ***Note:***: All options are optional except for `get_password`.
 
 ### **get_userlist**
-### **get_userlist**
 
 Specifies how to fetch the list of user accounts. If not provided, no user selection will occur.
 
@@ -206,4 +205,4 @@ wezterm.plugin.require("https://github.com/dfaerch/passrelay.wezterm").apply_to_
 
 ##### Result:
 
-When you hit `CTRL+p`, you can choose between "alice" or "bob". The user will then be used to look up in the table in the get_password() function, and in the case of alice, return `password123`.
+When you hit `CTRL+p`, you can choose between "alice" or "bob". The user will then be used to look up in the table in the get_password() function, and in the case of alice, return `s00pers3cret`.

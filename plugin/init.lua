@@ -90,6 +90,7 @@ end
 local function check_for_update(window, module_settings, plugin_dir)
     local now = os.time()
     local state = read_update_state(plugin_dir, module_settings.update_check_branch)
+    wezterm.log_info("PassRelay update check: checking origin/" .. module_settings.update_check_branch)
 
     local local_ok, local_hash, local_stderr = wezterm.run_child_process({ "git", "-C", plugin_dir, "rev-parse", "HEAD" })
     if not local_ok then

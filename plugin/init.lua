@@ -124,6 +124,15 @@ local function check_for_update(window, module_settings, plugin_dir)
     )
 
     local local_revision = trim(local_hash)
+    if remote_hash == local_revision then
+        wezterm.log_info("PassRelay update check: local revision is current; resetting update state")
+        write_update_state(plugin_dir, module_settings.update_check_branch, {
+            last_check = tostring(now),
+            remote_hash = remote_hash,
+        })
+        return
+    end
+
     if state.remote_hash ~= remote_hash then
         state.remote_hash = remote_hash
         state.first_seen = tostring(now)
@@ -133,30 +142,26 @@ local function check_for_update(window, module_settings, plugin_dir)
     end
     state.last_check = tostring(now)
 
-    if remote_hash ~= local_revision then
-        wezterm.log_info("PassRelay update check: update available; local revision is " .. local_revision)
-        local last_reminder = tonumber(state.last_reminder)
-        if not state.first_notified then
-            window:toast_notification(
-                "PassRelay",
-                update_notification_message(state.first_seen),
-                nil,
-                module_settings.toast_time
-            )
-            state.first_notified = tostring(now)
-        elseif now - (tonumber(state.first_seen) or now) >= 8 * SECONDS_PER_DAY
-            and (not last_reminder or now - last_reminder >= REMINDER_INTERVAL)
-        then
-            window:toast_notification(
-                "PassRelay",
-                update_notification_message(state.first_seen),
-                nil,
-                module_settings.toast_time
-            )
-            state.last_reminder = tostring(now)
-        end
-    else
-        wezterm.log_info("PassRelay update check: local revision is current")
+    wezterm.log_info("PassRelay update check: update available; local revision is " .. local_revision)
+    local last_reminder = tonumber(state.last_reminder)
+    if not state.first_notified then
+        window:toast_notification(
+            "PassRelay",
+            update_notification_message(state.first_seen),
+            nil,
+            module_settings.toast_time
+        )
+        state.first_notified = tostring(now)
+    elseif now - (tonumber(state.first_seen) or now) >= 8 * SECONDS_PER_DAY
+        and (not last_reminder or now - last_reminder >= REMINDER_INTERVAL)
+    then
+        window:toast_notification(
+            "PassRelay",
+            update_notification_message(state.first_seen),
+            nil,
+            module_settings.toast_time
+        )
+        state.last_reminder = tostring(now)
     end
 
     write_update_state(plugin_dir, module_settings.update_check_branch, state)

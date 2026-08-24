@@ -78,18 +78,28 @@ local function check_for_update(window, module_settings, plugin_dir)
     local now = os.time()
     local state = read_update_state(plugin_dir)
 
-    local local_ok, local_hash = wezterm.run_child_process({ "git", "-C", plugin_dir, "rev-parse", "HEAD" })
+    local local_ok, local_hash, local_stderr = wezterm.run_child_process({ "git", "-C", plugin_dir, "rev-parse", "HEAD" })
     if not local_ok then
-        wezterm.log_warn("PassRelay update check: unable to read local revision")
+        wezterm.log_warn("PassRelay update check: unable to read local revision: " .. trim(local_stderr or local_hash or "unknown error"))
         return
     end
 
-    local remote_ok, remote_output = wezterm.run_child_process({
+    local remote_ok, remote_output, remote_stderr = wezterm.run_child_process({
         "git", "-C", plugin_dir, "ls-remote", "origin", "refs/heads/" .. module_settings.update_check_branch,
     })
     local remote_hash, remote_branch = remote_output and remote_output:match("^([0-9a-fA-F]+)[ \t]+refs/heads/(.-)%s*$")
-    if not remote_ok or not remote_hash or remote_branch ~= module_settings.update_check_branch then
-        wezterm.log_warn("PassRelay update check: unable to query origin/" .. module_settings.update_check_branch)
+    if not remote_ok then
+        wezterm.log_warn(
+            "PassRelay update check: unable to query origin/" .. module_settings.update_check_branch
+            .. ": " .. trim(remote_stderr or remote_output or "unknown error")
+        )
+        return
+    end
+    if not remote_hash or remote_branch ~= module_settings.update_check_branch then
+        wezterm.log_warn(
+            "PassRelay update check: unexpected ls-remote response for origin/" .. module_settings.update_check_branch
+            .. ": " .. trim(remote_output or "no output")
+        )
         return
     end
 

@@ -16,6 +16,7 @@ local UPDATE_STATE_FILE_PREFIX = "update-state-"
 local SECONDS_PER_HOUR = 60 * 60
 local SECONDS_PER_DAY = 24 * SECONDS_PER_HOUR
 local REMINDER_INTERVAL = 14 * SECONDS_PER_DAY
+local UPDATE_CHECK_DELAY_SECONDS = 1
 local update_checks_in_progress = {}
 
 local function trim(value)
@@ -188,13 +189,19 @@ local function schedule_update_check(window, module_settings)
             interval = math.min(interval, 8 * SECONDS_PER_HOUR)
         end
         local next_check = (tonumber(state.last_check) or now) + interval
-        wezterm.log_info("PassRelay update check: origin/" .. module_settings.update_check_branch .. " next due at " .. next_check)
+        wezterm.log_info(
+            "PassRelay update check: origin/" .. module_settings.update_check_branch
+            .. " not due; last check=" .. (state.last_check or "none")
+            .. ", now=" .. now
+            .. ", interval=" .. interval
+            .. ", next due=" .. next_check
+        )
         return
     end
 
     update_checks_in_progress[plugin_dir] = true
     wezterm.log_info("PassRelay update check: scheduled for origin/" .. module_settings.update_check_branch)
-    wezterm.time.call_after(0, function()
+    wezterm.time.call_after(UPDATE_CHECK_DELAY_SECONDS, function()
         check_for_update(window, module_settings, plugin_dir)
         update_checks_in_progress[plugin_dir] = nil
     end)
@@ -359,6 +366,10 @@ function M._continue_password(window, pane, module_settings, bypass_local_echo_c
 end
 
 function M.exec_password_manager(window, pane, module_settings)
+  if module_settings.check_for_updates then
+    schedule_update_check(window, module_settings)
+  end
+
   if module_settings.detect_local_echo_before_userlist then
     local win_id = tostring(window:window_id())
     local now = tonumber(wezterm.time.now():format("%s"))
@@ -392,10 +403,6 @@ function M.exec_password_manager(window, pane, module_settings)
         return
       end
     end
-  end
-
-  if module_settings.check_for_updates then
-    schedule_update_check(window, module_settings)
   end
 
   M._continue_password(window, pane, module_settings)

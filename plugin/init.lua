@@ -87,7 +87,10 @@ local function check_for_update(window, module_settings, plugin_dir)
     local remote_ok, remote_output, remote_stderr = wezterm.run_child_process({
         "git", "-C", plugin_dir, "ls-remote", "origin", "refs/heads/" .. module_settings.update_check_branch,
     })
-    local remote_hash, remote_branch = remote_output and remote_output:match("^([0-9a-fA-F]+)[ \t]+refs/heads/(.-)%s*$")
+    local remote_hash, remote_branch
+    if remote_output then
+        remote_hash, remote_branch = remote_output:match("^([0-9a-fA-F]+)[ \t]+refs/heads/(.-)%s*$")
+    end
     if not remote_ok then
         wezterm.log_warn(
             "PassRelay update check: unable to query origin/" .. module_settings.update_check_branch

@@ -47,4 +47,3 @@ There are 2 ways to use this:
 - There are pre-made examples for different password managers in the [integrations](integrations/) subdir. If your password manager is listed there, simply follow that example.
 
 - If you are looking to make your own integration with some other manager, please see the full [Documentation](docs/README.md#Configuration)
-

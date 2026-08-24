@@ -1,32 +1,9 @@
 local wezterm = require("wezterm")
 
-local M = { version = 1.1 }
+local M = {}
 
 -- Track last local echo failure time per window
 local last_echo_fail = {}
-
-------------------------
--- Utility functions
-------------------------
-
-function version_tuple(version)
-    local parts = {}
-    for num in version:gmatch("%d+") do
-        table.insert(parts, tonumber(num))
-    end
-    return parts
-end
-
-function compare_versions(v1, v2)
-    local t1, t2 = version_tuple(v1), version_tuple(v2)
-    for i = 1, math.max(#t1, #t2) do
-        local num1 = t1[i] or 0
-        local num2 = t2[i] or 0
-        if num1 < num2 then return -1
-        elseif num1 > num2 then return 1 end
-    end
-    return 0
-end
 
 local function extract_field(obj, path)
     for part in path:gmatch("[^.]+") do
@@ -270,4 +247,3 @@ function M.apply_to_config(config, module_settings)
 end
 
 return M
-

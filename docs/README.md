@@ -42,7 +42,6 @@ Check out the `Examples` below for more complete examples.
 ***Note:***: All options are optional except for `get_password`.
 
 ### **get_userlist**
-### **get_userlist**
 
 Specifies how to fetch the list of user accounts. If not provided, no user selection will occur.
 
@@ -50,35 +49,67 @@ Specifies how to fetch the list of user accounts. If not provided, no user selec
   `get_userlist = { format = "text", command = "your_command" }`  
   The default `format` is `"text"`, and the command's output is treated as plain text with one username per line.
 
- **JSON format**: Use a table to specify the `format`, `command`, and the fields `id_path` and `label_path`. Example:  
+- **JSON format**: Use a table to specify the `format`, `command`, and the fields `id_path` and `label_path`. Example:
   ```lua
-  get_userlist = 
-    { 
-      format = "json", 
-      command = "your_command_to_fetch_json", 
-      id_path = "id", 
-      label_path = "additional_information" 
+  get_userlist =
+    {
+      format = "json",
+      command = "your_command_to_fetch_json",
+      id_path = "id",
+      label_path = "additional_information"
     }
-  ```  
-  `label_path` is used to identify what field in the json should be extract to use for the label (ie the name displayed to the user), and `id_path` is for the `id` that will not be displayed, but will be sent to the %user param of `get_password`.
+  ```
+  `label_path` is the field shown in the selector. `id_path` is the field used as the account ID. Both paths may use dotted fields, such as `vault.id`.
+
+  The full JSON object is kept after selection, so `get_password` can use other fields from it.
 
 - **Plain text format**: When the `format` is `"text"`, the output should contain one username per line. Example:  
   `get_userlist = "/bin/echo -e \"bob\\nalice\""`
 
-- **Function**: If a function is provided, it will be called, and a list of users is expected to be returned. Example:  
-```lua
-get_userlist = function()
-    return {"alice", "bob"}
-end
-```
+- **Function**: If a function is provided, it will be called and should return a list.
+
+  The list can be simple strings:
+
+  ```lua
+  get_userlist = function()
+      return {"alice", "bob"}
+  end
+  ```
+
+  Or it can return tables when the displayed name and lookup ID are different. Tables must contain `label` and `id`; any extra fields are kept:
+
+  ```lua
+  get_userlist = function()
+      return {
+          { label = "Alice", id = "alice_id", vault = { id = "vault_id" } },
+          { label = "Bob", id = "bob_id" },
+      }
+  end
+  ```
 
 ### **get_password** *(mandatory)*
 
 A command (string) or function to fetch the password.
 
-- **If given a string**, this string will be executed by `sh -c`. For example, `get_password = "/bin/echo password123"` will execute "/bin/echo" and return the password "password123" to the console. If used with `get_userlist`, you can add `%user` to the command to pass in the selected username, e.g., `get_password = "grep %user /path/to/userlist"`. Note that no sanitization is done by PassRelay on the username before inserting.
+- **If given a string**, this string will be executed by `sh -c`. For example, `get_password = "/bin/echo password123"` will execute `/bin/echo` and return `password123`.
 
-- **If given a function**, the function will be called (with the username as an argument if `get_userlist` is defined), and must return the password as a string. Example:
+  If used with `get_userlist`, use `%user` to insert the selected user:
+
+  ```lua
+  get_password = "grep %user /path/to/passwords"
+  ```
+
+  `%user` is the same as `{id}`. For a plain-text user list, both values are the selected string.
+
+  Structured user fields can also be inserted with placeholders:
+
+  ```lua
+  get_password = "op read 'op://{vault.id}/{id}/password'"
+  ```
+
+  Missing fields and table values abort the command. Placeholder values are inserted without shell escaping, so quote them appropriately for the command and data you use.
+
+- **If given a function**, the function will be called and must return the password as a string. If `get_userlist` returns strings, the function receives the selected string. If `get_userlist` returns tables, the function receives the selected table.
 
 ```lua
 get_password = function(user)

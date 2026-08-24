@@ -76,7 +76,7 @@ local function should_check_for_update(state, now, interval)
     local last_check = tonumber(state.last_check) or 0
     local first_seen = tonumber(state.first_seen)
     if first_seen and now - first_seen < 7 * SECONDS_PER_DAY then
-        interval = 8 * SECONDS_PER_HOUR
+        interval = math.min(interval, 8 * SECONDS_PER_HOUR)
     end
     return now - last_check >= interval
 end
@@ -113,6 +113,10 @@ local function check_for_update(window, module_settings, plugin_dir)
         return
     end
 
+    wezterm.log_info(
+        "PassRelay update check: origin/" .. module_settings.update_check_branch .. " is " .. remote_hash
+    )
+
     local local_revision = trim(local_hash)
     if state.remote_hash ~= remote_hash then
         state.remote_hash = remote_hash
@@ -142,12 +146,30 @@ end
 
 local function schedule_update_check(window, module_settings)
     local plugin_dir = passrelay_plugin_dir()
-    if not plugin_dir or update_checks_in_progress[plugin_dir] then return end
+    if not plugin_dir then
+        wezterm.log_warn("PassRelay update check: plugin checkout not found")
+        return
+    end
+    if update_checks_in_progress[plugin_dir] then
+        wezterm.log_info("PassRelay update check: already in progress for origin/" .. module_settings.update_check_branch)
+        return
+    end
 
     local state = read_update_state(plugin_dir, module_settings.update_check_branch)
-    if not should_check_for_update(state, os.time(), module_settings.update_check_interval) then return end
+    local now = os.time()
+    if not should_check_for_update(state, now, module_settings.update_check_interval) then
+        local interval = module_settings.update_check_interval
+        local first_seen = tonumber(state.first_seen)
+        if first_seen and now - first_seen < 7 * SECONDS_PER_DAY then
+            interval = math.min(interval, 8 * SECONDS_PER_HOUR)
+        end
+        local next_check = (tonumber(state.last_check) or now) + interval
+        wezterm.log_info("PassRelay update check: origin/" .. module_settings.update_check_branch .. " next due at " .. next_check)
+        return
+    end
 
     update_checks_in_progress[plugin_dir] = true
+    wezterm.log_info("PassRelay update check: scheduled for origin/" .. module_settings.update_check_branch)
     wezterm.time.call_after(0, function()
         check_for_update(window, module_settings, plugin_dir)
         update_checks_in_progress[plugin_dir] = nil

@@ -122,7 +122,8 @@ after which PassRelay stops notifying about that release to avoid pestering the 
 
 The check is triggered when PassRelay is invoked using its hotkey. Under normal circumstances,
 it runs at most once every 24 hours. For the week following detection of a new release, it
-runs at most once every 8 hours so users can be notified more quickly about follow-up bugfixes.
+runs at most once every 8 hours (or the lower configured interval) so users can be notified
+more quickly about follow-up bugfixes.
 
 ### **update_check_interval**
 

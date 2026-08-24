@@ -127,11 +127,15 @@ local function check_for_update(window, module_settings, plugin_dir)
 
     local local_revision = trim(local_hash)
     if remote_hash == local_revision then
-        wezterm.log_info("PassRelay update check: local revision is current; resetting update state")
-        write_update_state(plugin_dir, module_settings.update_check_branch, {
-            last_check = tostring(now),
-            remote_hash = remote_hash,
-        })
+        if state.first_seen or state.first_notified or state.last_reminder or state.final_notification_sent then
+            wezterm.log_info("PassRelay update check: local revision is current; resetting update state")
+            state = { remote_hash = remote_hash }
+        else
+            wezterm.log_info("PassRelay update check: local revision is current")
+        end
+        state.last_check = tostring(now)
+        state.remote_hash = remote_hash
+        write_update_state(plugin_dir, module_settings.update_check_branch, state)
         return
     end
 
@@ -200,7 +204,6 @@ local function schedule_update_check(window, module_settings)
     end
 
     update_checks_in_progress[plugin_dir] = true
-    wezterm.log_info("PassRelay update check: scheduled for origin/" .. module_settings.update_check_branch)
     wezterm.time.call_after(UPDATE_CHECK_DELAY_SECONDS, function()
         check_for_update(window, module_settings, plugin_dir)
         update_checks_in_progress[plugin_dir] = nil

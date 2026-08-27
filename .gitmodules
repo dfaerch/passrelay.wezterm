@@ -1,3 +1,0 @@
-[submodule "testkit"]
-	path = tests
-	url = https://github.com/dfaerch/passrelay.wezterm-tests
